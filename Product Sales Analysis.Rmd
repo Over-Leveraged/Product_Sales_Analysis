@@ -1,0 +1,354 @@
+---
+title: "Product Sales Analysis"
+author: "Akiel Walsh"
+date: "2023-03-26"
+output: pdf_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(SnowballC)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+library(httpuv)
+library(openssl)
+library(RJSONIO)
+library(tidyr)
+library(wordcloud2)
+library(tidytext)
+library(lubridate)
+
+```
+
+```{r}
+sales.df <- read.csv(file = "/home/walsh/Documents/Project/sales_data_2023.csv", stringsAsFactors = FALSE)
+```
+
+#Data Exploration of the Sales Dataset
+```{r}
+head(sales.df)
+glimpse(sales.df)
+str(sales.df)
+```
+
+```{r}
+sales.df$Order.Date <- as.Date(sales.df$Order.Date, format = "%m/%d/%Y")
+sales.df$Ship.Date <- as.Date(sales.df$Ship.Date, format = "%m/%d/%Y")
+sales.df$Units.Sold <- as.numeric(sales.df$Units.Sold)
+sales.df$Unit.Price <- as.numeric(sales.df$Unit.Price)
+sales.df$Unit.Cost <- as.numeric(sales.df$Unit.Cost)
+sales.df$Total.Revenue <- as.numeric(sales.df$Total.Revenue)
+sales.df$Total.Cost <- as.numeric(sales.df$Total.Cost)
+sales.df$Total.Profit <- as.numeric(sales.df$Total.Profit)
+str(sales.df)
+```
+
+```{r}
+#Viewing the different values for region, in cleaning we might just opt to replace these values or fully remove them
+unique(sales.df$Region)
+unique(clean_df$X)
+```
+
+```{r}
+#Total # of Rows with no value or empty strings as well as columns with arbitrary values
+total_empyt_rows <- sum(sales.df$Region == "" & sales.df$Country == "" & sales.df$X == "")
+incorrect_vals <- sum(sales.df$Region == "?" | sales.df$Region == "???" | sales.df$Region == "k" | sales.df$Region == "\"\"" | sales.df$Region == "??" )
+
+print(paste("Total Empty Rows is = " , total_empyt_rows , "Total Rows with incorrect Values = " , incorrect_vals))
+```
+
+```{r}
+colm_names <- names(sales.df)
+invalidVals <- c("", "?", "???", "k", "\"\"", "??", NA, "None")
+invalidVal <- c( "")
+
+for (colm in colm_names) {
+  print(paste("Invalid or null values in column", colm, ":", sum(sales.df[[colm]] %in% invalidVal)))
+}
+
+## We can see the amount of empty or null values within the data set, we will remove these later.  
+```
+
+
+# Histograms for the different attributes of the dataset
+```{r}
+for (colm in colm_names){
+  if ((class(sales.df[[colm]])) == "numeric"){
+    hist(sales.df[[colm]], main = paste("Histogram of ", colm, sep = ""))
+  }
+}
+```
+
+# Boxplot to Identify Outliers
+```{r}
+for (colm in colm_names){
+  if ((class(sales.df[[colm]])) == "numeric"){
+    boxplot(sales.df[[colm]], main = paste("Boxplot of ", colm, sep = ""))
+  }
+}
+```
+#From the Results we can see that Total.Profit, Total Costs as well as Total Revenues contain a large number of outliers. We will adjust to fall within the median after we have removed the necessary rows and tables
+
+
+
+#CLEANING DATASET
+##FIXING MISSING NUMERIC VALUES BY REPLACING THEM WITH THE MEDIAN
+```{r}
+imputedVals.df <- sales.df
+
+for (colm in colm_names) {
+  if (class(sales.df[[colm]]) == "numeric") {
+    col_median <- median(sales.df[[colm]], na.rm = TRUE)
+    imputedVals.df[[colm]][is.na(sales.df[[colm]])] <- col_median
+  }
+}
+```
+
+## Removing invalid values and Nulls
+```{r}
+clean_df <- imputedVals.df
+for (col in colm_names) {
+  clean_df <- clean_df[!(clean_df[[col]] %in% invalidVals | is.na(clean_df[[col]])), ]
+}
+```
+## Verifying  if data was cleaned
+```{r}
+for (colm in colm_names) {
+  print(paste("Invalid or null values in column", colm, ":", sum(clean_df[[colm]] %in% invalidVals)))
+}
+```
+
+```{r}
+
+#sdf <- clean_df
+
+for (colm in colm_names){
+  if (class(clean_df[[colm]]) == "numeric") {
+  col_median <- median(sdf[[colm]], na.rm = TRUE)
+  sdf[[colm]][sdf[[colm]] %in% boxplot(sdf[[colm]])$out] <- col_median
+  }
+}
+
+boxplot(sdf$Total.Profit)
+boxplot(sales.df$Total.Profit)
+boxplot(sdf$Units.Sold)
+
+  
+```
+
+
+
+```{r}
+sdf <- clean_df
+
+# Compute outliers for each column
+outliers <- sapply(clean_df, function(x) boxplot.stats(x)$out)
+
+# Replace outliers with column medians
+for (colm in colm_names){
+  col_median <- median(clean_df[[colm]], na.rm = TRUE)
+  sdf[[colm]][sdf[[colm]] %in% outliers[[colm]]] <- col_median
+}
+```
+
+#Data Analysis 
+##a. What is the average amount spent on Personal Care vs. Cosmetics in each region? [4]
+```{r}
+#a. What is the average amount spent on Personal Care vs. Cosmetics in each region? [4]
+comparison.df <- sdf %>% select(X, Region, Total.Revenue)%>% 
+  group_by(Region, X) %>% 
+  filter(X == "Personal Care" | X == "Cosmetics") %>%
+  summarise(mean_revenue = mean(Total.Revenue), .groups = "drop")  
+```
+
+```{r}
+#Change Structure of code
+ggplot(comparison.df, aes(x = Region, y = mean_revenue, fill = X)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Mean Revenue by Region and Category", x = "Region", y = "Mean Revenue") +
+  scale_fill_manual(values = c("Personal Care" = "#5eb56b", "Cosmetics" = "#855eb5")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+##b. In which country do people use the most cosmetics?
+```{r}
+partb.df <- sdf %>% select(Country,Units.Sold, X) %>% filter(X == "Cosmetics")
+
+partb.df <- partb.df %>% group_by(Country) %>% summarise(Max.Units = max(Units.Sold))
+resultb <- partb.df %>% select(everything()) %>% filter(Max.Units == max(Max.Units))
+
+print(paste("The country that uses the Most Cosmetic is ", resultb$Country , "with the total number of units sold being : ", resultb$Max.Units))
+
+```
+
+##c In 2016, which product had the highest and lowest quantity sold across each region?
+
+```{r}
+
+partc.df <- sdf %>% 
+  select(Region, Units.Sold, X, Order.Date) %>% 
+  filter(as.Date(Order.Date) > as.Date('2016-01-01') & as.Date(Order.Date) <= as.Date('2016-12-31'))
+
+partcmax.df <- partc.df %>% group_by(Region) %>% 
+  #summarise(max.sold = max(Units.Sold), min.sold = min(Units.Sold))
+  summarise(max_product = X[which.max(Units.Sold)], 
+            max_sold = max(Units.Sold),
+            min_product = X[which.min(Units.Sold)],
+            min_sold = min(Units.Sold))
+View(partcmax.df)
+
+```
+
+```{r}
+##d. What is the average profit from the sale of Personal Care vs. Cosmetics in each region?
+partd.df <- sdf %>% select(X,Region, Total.Profit) %>% 
+  group_by(Region,X) %>%
+  filter(X == "Personal Care" | X == "Cosmetics") %>%
+  summarise(average.profit = mean(Total.Profit), .groups = "drop")
+
+ggplot(partd.df, aes(x = Region, y = average.profit, fill = X)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average Profit by Region and Category", x = "Region", y = "Average Profit") +
+  scale_fill_manual(values = c("Personal Care" = "#5eb56b", "Cosmetics" = "#855eb5")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+```
+
+
+```{r}
+#e. What is the average profit for each item by region? [5]
+
+parte.df <- sdf %>%
+  select(X, Region, Total.Profit ) %>% 
+  group_by(Region,X) %>%
+  summarise(average.profit2 = mean(Total.Profit), .groups = 'drop')
+View(parte.df)
+
+#Turn Each Region into a graph
+  
+```
+
+##f. In which of the seasons (Spring, Summer, Autumn, Winter) do persons spend the most on:
+##i. Cosmetics
+##ii. Personal Care [6]
+
+```{r}
+getSeason <- function(input.date){
+  joined.date<- 100*month(input.date) + day(input.date)
+  cuts <- base::cut(joined.date, breaks = c(0,319,0921,1220,1231))
+  levels(cuts) <- c("Winter","Spring","Summer","Fall","Winter")
+  return(cuts)
+}
+```
+
+
+```{r}
+partf.df <- sdf %>% 
+  select(X, Total.Revenue, Order.Date) %>% 
+  filter(X == "Personal Care" | X == "Cosmetics")
+partf.df$Season <- getSeason(partf.df$Order.Date)
+
+cosmeticsf.df <-partf.df %>% 
+  filter(X == 'Cosmetics') %>%
+  group_by(Season,X) %>%
+  summarise(TotalRev = sum(Total.Revenue), .groups = "drop") #%>% 
+  #slice(which.max(TotalRev))
+
+pie_chart <- ggplot(cosmeticsf.df, aes(x="", y=TotalRev, fill=Season)) + 
+  geom_bar(stat="identity", width=1) + 
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("Summer" = "#5eb56b", "Winter" = "#855eb5", "Spring" = "red", "Fall" = "orange")) +
+  labs(title = "Total Revenue by for Cosmetic Sales By Season", fill = "Category", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "bottom")
+print(pie_chart)
+
+PersonalCare.df <- partf.df %>% 
+  filter(X == 'Personal Care') %>%
+  group_by(Season,X) %>%
+  summarise(TotalRev = sum(Total.Revenue), .groups = "drop")
+
+pie_chart2 <- ggplot(PersonalCare.df, aes(x="", y=TotalRev, fill=Season)) + 
+  geom_bar(stat="identity", width=1) + 
+  coord_polar("y", start=0) +
+  scale_fill_manual(values = c("Summer" = "#5eb56b", "Winter" = "#855eb5", "Spring" = "red", "Fall" = "orange")) +
+  labs(title = "Total Revenue for Personal Care Sales By Season", fill = "Category", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "bottom")
+print(pie_chart2)
+
+  
+```
+
+
+
+
+##g. Is there a correlation between the units sold for Cosmetics & Personal Care items? Explain
+the result. 
+```{r}
+#corrplot(cor(aq), method = "number")
+
+corr.df <- sdf %>% select(X, Units.Sold) %>% 
+  filter(X == "Personal Care") %>% sample_n(6000)
+corr2.df <- sdf %>% select(X, Units.Sold) %>%
+  filter( X == "Cosmetics") %>% sample_n(6000)
+corCosPC <- cor(corr.df$Units.Sold, corr2.df$Units.Sold )
+corCosPC
+
+```
+
+##h. Find the monthly average units sold for Personal Care, Cosmetics and Beverages and plot a
+##   series graph for 2016. Discuss the resulting visualization. [6]
+```{r}
+month_dict <- list("1" = "January", "2" = "February", "3" = "March", "4" = "April", "5" = "May", "6" = "June", "7" = "July", "8" = "August", "9" = "September", "10" = "October", "11" = "November", "12" = "December")
+
+parth.df <- sdf %>% 
+  filter(X == "Personal Care" | X == "Cosmetics" | X == "Beverages") %>%
+  mutate(OrderYear = year(Order.Date))%>%
+  #mutate(OrderMonth = month_dict[month(Order.Date)]) %>%
+  mutate(OrderMonth = month(Order.Date)) %>%
+  
+  group_by(X, OrderMonth, OrderYear) %>%
+  summarise(avg.sold = mean(Units.Sold), .groups = "drop")
+ 
+
+timeseriesDf <- parth.df %>% 
+  select(everything()) %>%
+  filter (OrderYear == 2016)
+
+View(timeseriesDf)
+View(parth.df)
+
+timeseriesDf %>% plot(avg.sold~OrderMonth)
+
+ggplot(timeseriesDf, aes(x = OrderMonth, y = avg.sold)) +
+  geom_line() +
+  labs(title = "Units Sold by Month in 2016",
+       x = "Month",
+       y = "Units Sold")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

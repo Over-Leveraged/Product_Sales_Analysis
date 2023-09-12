@@ -1,0 +1,116 @@
+---
+title: "Word Clound and Sentiment Analysis"
+author: "Akiel Walsh"
+date: "2023-03-25"
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#library(twitteR)
+library(tm)
+library(syuzhet)
+library(SnowballC)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+library(httpuv)
+library(openssl)
+library(RCurl)
+library(RJSONIO)
+library(httk)
+library(tidyr)
+library(wordcloud2)
+library(tidytext)
+library(tidyverse)
+
+```
+
+
+```{r}
+review_csv <- read.csv(file = "/home/walsh/Documents/Project/the_reviews.csv", stringsAsFactors = FALSE)
+```
+
+```{r}
+countryReviews <- data.frame(review_csv %>% select(UserLocation, ReviewText))
+head(countryReviews)
+```
+
+Data Set Cleaning -> Removing Rows with no values for Reviews
+```{r}
+review_csv <- review_csv[review_csv$ReviewText != "",]
+```
+
+
+
+WORD CLOUD FOR MALTA -> Filtering of the table to get the Reviews for Malta
+```{r}
+malta_reviews <- data.frame(countryReviews %>% select(everything()) %>% filter(grepl("Malta",countryReviews$UserLocation)))
+
+mreviews.corpus <- Corpus(VectorSource(malta_reviews$ReviewText))
+
+mreviews.corpus <- mreviews.corpus %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(removeWords,stopwords("english"))%>%
+  tm_map(removeWords, stopwords("SMART"))
+
+malta.tdm = TermDocumentMatrix(mreviews.corpus) %>% as.matrix()
+words = sort(rowSums(malta.tdm), decreasing = TRUE)
+word.df = data.frame(word = names(words), freq = words)
+#View(word.df)
+malta.colors = c("red","green","orange")
+
+
+wordcloud2(word.df,rotateRatio = 0, color = rep_len(malta.colors,nrow(word.df)))
+
+```
+
+WORD CLOUD FOR ENGLAND
+
+```{r}
+England_reviews <- data.frame(countryReviews %>% select(everything()) %>% filter(grepl("United Kingdom",countryReviews$UserLocation)))
+
+Ereviews.corpus <- Corpus(VectorSource(England_reviews$ReviewText))
+
+Ereviews.corpus <- Ereviews.corpus %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(removeWords,stopwords("english"))%>%
+  tm_map(removeWords, stopwords("SMART"))
+
+uk.tdm = TermDocumentMatrix(Ereviews.corpus) %>% as.matrix()
+Ukwords = sort(rowSums(uk.tdm), decreasing = TRUE)
+Ukword.df = data.frame(ukword = names(Ukwords), freq = Ukwords)
+#View(Ukword.df)
+uk.colors = c("red","blue","white")
+
+
+wordcloud2(Ukword.df,rotateRatio = 0, color = rep_len(uk.colors,nrow(word.df)),backgroundColor = "#3C3D37")
+
+```
+
+SENTIMENT ANALYSIS DATA CLEANING
+
+```{r}
+#Show the number of missing rows that have no reviews
+sum(England_reviews$ReviewText == "")
+sum(malta_reviews$ReviewText == "")
+```
+# Sentiment Analysis 
+```{r}
+#head(England_reviews)
+reviewsE.df <- tibble(text = str_to_lower(England_reviews$ReviewText))
+#head(reviewsE.df)
+sentiment <- get_nrc_sentiment(reviewsE.df$text)
+sentiment.sum <- colSums(sentiment)
+sentiment.join <- data.frame(count = sentiment.sum, sentiments = names(sentiment.sum)) 
+```
+
+
+
