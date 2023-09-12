@@ -1,3 +1,2 @@
 # Product_Sales_Analysis
-Simple Data Analysis Project - Includes data cleaning, preparation, exploration, and analysis.
-Sentiment Analysis and Word Clouds
+Simple Data Analysis Project - Includes data cleaning, preparation, exploration, sentiment analysis and Word Clouds
